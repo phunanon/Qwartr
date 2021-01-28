@@ -3,13 +3,13 @@
 #define MAX_STACK_LEN 2000
 
 enum Op : uint8_t {
-  Return, Mark,   Dupe,   U08,    I32,    F32,
-  IAdd,   ISub,   ILthn,  IMthn,  When,   Else,
-  Call,   Str,    Print
+  Op_Return, Op_Mark,   Op_Dupe,   Op_U08,    Op_I32,    Op_F32,
+  Op_IAdd,   Op_ISub,   Op_ILthn,  Op_IMthn,  Op_When,   Op_Else,
+  Op_Call,   Op_Str,    Op_Print
 };
 enum Val : uint8_t {
-  Mark = 0x04, U08  = 0x01, I32  = 0x14, F32  = 0x24,
-  Blob = 0x00
+  V_Mark = 0x04, V_U08 = 0x01,  V_I32 = 0x14,  V_F32  = 0x24,
+  V_Blob = 0x00
 };
 
 typedef uint32_t hash32;
@@ -20,33 +20,34 @@ typedef uint16_t vlen;
 
 uint8_t code[MAX_CODE_LEN] = {
   //Entry
-  0x00, 0x00, 0x00, 0x00,           //entry
-  0x0B, 0x00,                       //Length
-  0x00,                             //arity:returns
-  Op::I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
-  Op::Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
-  Op::Print,                        //[Print]
+  0x00, 0x00, 0x00, 0x00,          //entry
+  0x0B, 0x00,                      //Length
+  0x00,                            //arity:returns
+  Op_I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
+  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_Print,                        //[Print]
   //:1:1 Fib =n n 3 <i ? 1 ! n 1 -i Fib n 2 -i Fib +i ;
-  0x01, 0x00, 0x00, 0x00,           //hashed Fib
-  0x3E, 0x00,                       //Length
-  0x11,                             //arity:returns
-  Op::Mark, 0x00, 0x00, 0x00, 0x01, //=n
-  Op::Dupe, 0x00, 0x00, 0x00, 0x01, //n 
-  Op::I32,  0x03, 0x00, 0x00, 0x00, //[i32 3]
-  Op::ILthn,                        //[<i]
-  Op::When, 0x08, 0x00,             //[? skip 8]
-  Op::I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
-  Op::Else, 0x21, 0x00,             //[! skip 33]
-  Op::Dupe, 0x00, 0x00, 0x00, 0x01, //n
-  Op::I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
-  Op::ISub,                         //[-i]
-  Op::Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
-  Op::Dupe, 0x00, 0x00, 0x00, 0x01, //n
-  Op::I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
-  Op::ISub,                         //[-i]
-  Op::Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
-  Op::IAdd,                         //[+i]
-  Op::Return                        //[return]
+  //: Fib DUP 3 <i ? 1 ! DUP 1 -i Fib NIP 2 -i Fib +i ;
+  0x01, 0x00, 0x00, 0x00,          //hashed Fib
+  0x3E, 0x00,                      //Length
+  0x11,                            //arity:returns
+  Op_Mark, 0x00, 0x00, 0x00, 0x01, //=n
+  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n 
+  Op_I32,  0x03, 0x00, 0x00, 0x00, //[i32 3]
+  Op_ILthn,                        //[<i]
+  Op_When, 0x08, 0x00,             //[? skip 8]
+  Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
+  Op_Else, 0x21, 0x00,             //[! skip 33]
+  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n
+  Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
+  Op_ISub,                         //[-i]
+  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n
+  Op_I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
+  Op_ISub,                         //[-i]
+  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_IAdd,                         //[+i]
+  Op_Return                        //[return]
 };
 uint8_t stack[MAX_STACK_LEN];
 
@@ -110,11 +111,11 @@ uint8_t popU08 (cptr &s) {
 }
 void pushU08 (cptr &s, uint8_t v) {
   stack[++s] = v;
-  stack[++s] = Val::U08;
+  stack[++s] = V_U08;
 }
 void pushI32 (cptr &s, int32_t v) {
   memcpy(stack + ++s, &v, sizeof(int32_t));
-  stack[s += 4] = Val::I32;
+  stack[s += 4] = V_I32;
 }
 
 void exeFunc (hash32 fHash, sptr s) {
@@ -125,7 +126,7 @@ void exeFunc (hash32 fHash, sptr s) {
 
   while (true) {
     switch (code[c++]) {
-      case Op::Return: //Collapse the last `nReturns` values into the `arity`
+      case Op_Return: //Collapse the last `nReturns` values into the `arity`
         if (nReturn) {
           sptr copyTo = callS;
           for (uint8_t a = 0; a < arity; ++a)
@@ -136,16 +137,16 @@ void exeFunc (hash32 fHash, sptr s) {
           memcpy(stack + copyTo + 1, stack + copyFrom + 1, s - copyFrom);
         }
         return;
-      case Op::Mark: //Copy mark hash onto the stack
+      case Op_Mark: //Copy mark hash onto the stack
         ++s;
         memcpy(stack + s, code + c, sizeof(hash32));
-        stack[s += 4] = Val::Mark;
+        stack[s += 4] = V_Mark;
         c += sizeof(hash32);
         break;
-      case Op::Dupe: { //Find marked data on the stack and duplicate it here
+      case Op_Dupe: { //Find marked data on the stack and duplicate it here
         hash32 mark = i32_(code + c);
         for (sptr ss = s; ss;) {
-          if (stack[ss] != Val::Mark) {
+          if (stack[ss] != V_Mark) {
             skipBack(ss);
             continue;
           }
@@ -163,41 +164,41 @@ void exeFunc (hash32 fHash, sptr s) {
         c += sizeof(hash32);
         break;
       }
-      case Op::U08:
+      case Op_U08:
         break;
-      case Op::I32: //Copy i32 onto the stack
+      case Op_I32: //Copy i32 onto the stack
         ++s;
         memcpy(stack + s, code + c, sizeof(int32_t));
-        stack[s += 4] = Val::I32;
+        stack[s += 4] = V_I32;
         c += sizeof(int32_t);
         break;
-      case Op::F32:
+      case Op_F32:
         break;
-      case Op::IAdd:
+      case Op_IAdd:
         pushI32(s, popI32(s) + popI32(s));
         break;
-      case Op::ISub: {
+      case Op_ISub: {
         int32_t b = popI32(s);
         pushI32(s, popI32(s) - b);
       } break;
-      case Op::ILthn: //pop ints a, b, compare a < b
+      case Op_ILthn: //pop ints a, b, compare a < b
         pushU08(s, popI32(s) > popI32(s));
         break;
-      case Op::IMthn:
+      case Op_IMthn:
         break;
-      case Op::When: //pop bool, skip if false
+      case Op_When: //pop bool, skip if false
         c += (popU08(s) ? 0 : u16_(code + c)) + sizeof(flen);
         break;
-      case Op::Else: //Unconditionally skip
+      case Op_Else: //Unconditionally skip
         c += u16_(code + c) + sizeof(flen);
         break;
-      case Op::Call:
+      case Op_Call:
         exeFunc(i32_(code + c), s);
         c += sizeof(hash32);
         break;
-      case Op::Str:
+      case Op_Str:
         break;
-      case Op::Print:
+      case Op_Print:
     Serial.println(popI32(s));
         break;
     }
