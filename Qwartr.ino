@@ -30,26 +30,6 @@ typedef uint16_t sptr;
 typedef uint16_t flen;
 typedef uint16_t vlen;
 
-void printMem (uint8_t* mem, uint8_t by) {
-  uint8_t left = by / 2;
-  for (uint8_t i = 0; i < left; ++i) {
-    Serial.print((uint32_t)(intptr_t)((mem - left) + i) % 16, HEX);
-    Serial.print(" ");
-  }
-  Serial.print(". ");
-  for (uint8_t i = 1; i < by; ++i) {
-    Serial.print((uint32_t)(intptr_t)(mem + i) % 16, HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-  uint8_t* mEnd = mem + by;
-  for (uint8_t* m = mem - left; m < mEnd; ++m) {
-    if (*m < 16) Serial.print("0");
-    Serial.print(*m, HEX);
-  }
-  Serial.println();
-}
-
 uint8_t code[MAX_CODE_LEN] = {
   //Entry
   0x00, 0x00, 0x00, 0x00,          //entry
@@ -134,7 +114,7 @@ vlen vLen (sptr s) {
   return len ? len : u16_(stack + s - sizeof(vlen));
 }
 void skipBack (sptr &s) {
-  if (uint16_t len = vLen(s))
+  if (vlen len = vLen(s))
     s -= len + 1;
   else
     s -= u16_(stack + s - sizeof(vlen)) + sizeof(vlen);
@@ -173,17 +153,15 @@ void exeFunc (hash32 fHash, sptr s) {
   #define NEXT_OP() goto *ops[code[c++]]
 
   NEXT_OP();
-  op_Return: //Collapse the last `returns` values into the `arity`
+  op_Return: //Collapse the last `nReturns` values into the `arity`
     if (nReturn) {
       sptr copyTo = callS;
       for (uint8_t a = 0; a < arity; ++a)
         skipBack(copyTo);
       sptr copyFrom = s;
-      sptr copyLen = s;
       for (uint8_t r = 0; r < nReturn; ++r)
         skipBack(copyFrom);
-      copyLen -= copyFrom;
-      memcpy(stack + copyTo + 1, stack + copyFrom + 1, copyLen);
+      memcpy(stack + copyTo + 1, stack + copyFrom + 1, s - copyFrom);
     }
     return;
   op_Mark: //Copy mark hash onto the stack
@@ -198,17 +176,16 @@ void exeFunc (hash32 fHash, sptr s) {
       if (stack[ss] != Val_Mark) {
         skipBack(ss);
         continue;
-      } else {
-        hash32 hash = i32_(stack + ss - sizeof(hash32));
-        if (mark == hash) {
-           ss -= sizeof(hash32) + 1; //Go before the mark
-           vlen len = vLen(ss);
-           ss -= len; //Go before the data
-           ++s;
-           memcpy(stack + s, stack + ss, len + 1); //Copy data and its datatype
-           s += len;
-           break;
-        } else continue;
+      }
+      hash32 hash = i32_(stack + ss - sizeof(hash32));
+      if (mark == hash) {
+         ss -= sizeof(hash32) + 1; //Go before the mark
+         vlen len = vLen(ss);
+         ss -= len; //Go before the data
+         ++s;
+         memcpy(stack + s, stack + ss, len + 1); //Copy data and its datatype
+         s += len;
+         break;
       }
     }
     c += sizeof(hash32);
