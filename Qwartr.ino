@@ -21,16 +21,16 @@ typedef uint16_t vlen;
 
 uint8_t code[MAX_CODE_LEN] = {
   //Entry
-  0x00, 0x00, 0x00, 0x00,          //entry
-  0x0B, 0x00,                      //Length
+  0x00, 0x00,                      //entry
+  0x09, 0x00,                      //Length
   0x00,                            //arity:returns
   Op_I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
-  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_Call, 0x01, 0x00,             //[call Fib]
   Op_Print,                        //[Print]
   //:1:1 Fib =n n 3 <i ? 1 ! n 1 -i Fib n 2 -i Fib +i ;
   //: Fib DUP 3 <i ? 1 ! DUP 1 -i Fib NIP 2 -i Fib +i ;
-  0x01, 0x00, 0x00, 0x00,          //hashed Fib
-  0x36, 0x00,                      //Length
+  0x01, 0x00,                      //hashed Fib
+  0x31, 0x00,                      //Length
   0x11,                            //arity:returns
   Op_Mark, 0x00, 0x01,             //=n
   Op_Dupe, 0x00, 0x01,             //n 
@@ -42,11 +42,11 @@ uint8_t code[MAX_CODE_LEN] = {
   Op_Dupe, 0x00, 0x01,             //n
   Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
   Op_ISub,                         //[-i]
-  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_Call, 0x01, 0x00,             //[call Fib]
   Op_Dupe, 0x00, 0x01,             //n
   Op_I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
   Op_ISub,                         //[-i]
-  Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
+  Op_Call, 0x01, 0x00,             //[call Fib]
   Op_IAdd,                         //[+i]
   Op_Return                        //[return]
 };
@@ -74,17 +74,17 @@ void setup() {
 }
 void loop() {}
 
-hash32 prevHash = 0;
-cptr prevCptr = sizeof(hash32) + sizeof(flen) + 1;
-cptr findFuncCode (hash32 hash) {
+hash16 prevHash = 0;
+cptr prevCptr = sizeof(hash16) + sizeof(flen) + 1;
+cptr findFuncCode (hash16 hash) {
   if (hash == prevHash)
     return prevCptr;
   cptr c = 0;
-  while (c < MAX_CODE_LEN && i32_(code + c) != hash) {
-    c += sizeof(hash32);
+  while (c < MAX_CODE_LEN && u16_(code + c) != hash) {
+    c += sizeof(hash16);
     c += sizeof(flen) + 1 + u16_(code + c);
   }
-  c += sizeof(hash32) + sizeof(flen) + 1;
+  c += sizeof(hash16) + sizeof(flen) + 1;
   prevHash = hash;
   prevCptr = c;
   return c;
@@ -92,7 +92,7 @@ cptr findFuncCode (hash32 hash) {
 
 vlen vLen (sptr s) {
   uint16_t len = stack[s] & 0x0F;
-  return len ? len : u16_(stack + s - sizeof(vlen));
+  return len ? len : u16_(stack + s - sizeof(vlen)); //TODO ||
 }
 void skipBack (sptr &s) {
   if (vlen len = vLen(s))
@@ -119,10 +119,10 @@ void pushI32 (cptr &s, int32_t v) {
   stack[s += 4] = V_I32;
 }
 
-void exeFunc (hash32 fHash, sptr s) {
+void exeFunc (hash16 fHash, sptr s) {
   cptr c = findFuncCode(fHash);
   sptr callS = s;
-  uint8_t arity = (code[c - 1] & 0xF0) >> 4;
+  uint8_t arity =  (code[c - 1] & 0xF0) >> 4;
   uint8_t nReturn = code[c - 1] & 0x0F;
 
   while (true) {
@@ -194,8 +194,8 @@ void exeFunc (hash32 fHash, sptr s) {
         c += u16_(code + c) + sizeof(flen);
         break;
       case Op_Call:
-        exeFunc(i32_(code + c), s);
-        c += sizeof(hash32);
+        exeFunc(u16_(code + c), s);
+        c += sizeof(hash16);
         break;
       case Op_Str:
         break;
