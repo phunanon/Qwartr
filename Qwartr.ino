@@ -91,32 +91,33 @@ cptr findFuncCode (hash16 hash) {
 }
 
 vlen vLen (sptr s) {
-  uint16_t len = stack[s] & 0x0F;
+  vlen len = stack[s] & 0x0F;
   return len ? len : u16_(stack + s - sizeof(vlen)); //TODO ||
 }
 void skipBack (sptr &s) {
-  if (vlen len = vLen(s))
+  if (vlen len = vLen(s - 1))
     s -= len + 1;
   else
     s -= u16_(stack + s - sizeof(vlen)) + sizeof(vlen);
 }
 int32_t popI32 (cptr &s) {
-  int32_t i32 = i32_((stack + s) - sizeof(int32_t));
+  int32_t i32 = i32_((stack + s) - sizeof(int32_t) - 1);
   s -= sizeof(int32_t) + 1;
   return i32;
 }
 uint8_t popU08 (cptr &s) {
-  uint8_t u08 = *((stack + s) - sizeof(uint8_t));
+  uint8_t u08 = *((stack + s) - sizeof(uint8_t) - 1);
   s -= sizeof(uint8_t) + 1;
   return u08;
 }
 void pushU08 (cptr &s, uint8_t v) {
-  stack[++s] = v;
-  stack[++s] = V_U08;
+  stack[s++] = v;
+  stack[s++] = V_U08;
 }
 void pushI32 (cptr &s, int32_t v) {
-  memcpy(stack + ++s, &v, sizeof(int32_t));
-  stack[s += 4] = V_I32;
+  memcpy(stack + s, &v, sizeof(int32_t));
+  stack[s += sizeof(int32_t)] = V_I32;
+  ++s;
 }
 
 void exeFunc (hash16 fHash, sptr s) {
@@ -135,29 +136,27 @@ void exeFunc (hash16 fHash, sptr s) {
           sptr copyFrom = s;
           for (uint8_t r = 0; r < nReturn; ++r)
             skipBack(copyFrom);
-          memcpy(stack + copyTo + 1, stack + copyFrom + 1, s - copyFrom);
+          memcpy(stack + copyTo, stack + copyFrom, s - copyFrom);
         }
         return;
       case Op_Mark: //Copy mark hash onto the stack
-        ++s;
         memcpy(stack + s, code + c, sizeof(hash16));
         stack[s += sizeof(hash16)] = V_Mark;
+        ++s;
         c += sizeof(hash16);
         break;
       case Op_Dupe: { //Find marked data on the stack and duplicate it here
         hash16 mark = u16_(code + c);
-        for (sptr ss = s; ss;) {
-          if (stack[ss] != V_Mark) {
+        sptr ss = s;
+        while (ss) {
+          if (stack[ss - 1] != V_Mark) {
             skipBack(ss);
             continue;
           }
-          hash16 hash = u16_(stack + ss - sizeof(hash16));
-          if (mark == hash) {
-            ss -= sizeof(hash16) + 1; //Go before the mark
-            vlen len = vLen(ss);
-            ss -= len; //Go before the data
-            ++s;
-            memcpy(stack + s, stack + ss, len + 1); //Copy data and its datatype
+          if (mark == u16_(stack + ss - sizeof(hash16) - 1)) {
+            ss -= sizeof(hash16) + 1;
+            vlen len = vLen(ss - 1) + 1;
+            memcpy(stack + s, stack + ss - len, len); //Copy data and its datatype
             s += len;
             break;
           }
@@ -168,9 +167,9 @@ void exeFunc (hash16 fHash, sptr s) {
       case Op_U08:
         break;
       case Op_I32: //Copy i32 onto the stack
-        ++s;
         memcpy(stack + s, code + c, sizeof(int32_t));
-        stack[s += 4] = V_I32;
+        stack[s += sizeof(int32_t)] = V_I32;
+        ++s;
         c += sizeof(int32_t);
         break;
       case Op_F32:
