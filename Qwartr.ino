@@ -62,15 +62,6 @@ uint8_t code[MAX_CODE_LEN] = {
 };
 uint8_t stack[MAX_STACK_LEN];
 
-
-hash32 hash (const char* str) {
-  if (!str) return 0;
-  uint32_t hash = 5381;
-  while (*str)
-    hash = ((hash << 5) + hash) + *str++;
-  return hash;
-}
-
 uint16_t u16_ (uint8_t* b) {
   uint16_t u16;
   memcpy(&u16, b, sizeof(uint16_t));
