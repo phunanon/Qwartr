@@ -8,11 +8,12 @@ enum Op : uint8_t {
   Op_Call,   Op_Str,    Op_Print
 };
 enum Val : uint8_t {
-  V_Mark = 0x04, V_U08 = 0x01,  V_I32 = 0x14,  V_F32  = 0x24,
+  V_Mark = 0x02, V_U08 = 0x01,  V_I32 = 0x14,  V_F32  = 0x24,
   V_Blob = 0x00
 };
 
 typedef uint32_t hash32;
+typedef uint16_t hash16;
 typedef uint16_t cptr;
 typedef uint16_t sptr;
 typedef uint16_t flen;
@@ -29,20 +30,20 @@ uint8_t code[MAX_CODE_LEN] = {
   //:1:1 Fib =n n 3 <i ? 1 ! n 1 -i Fib n 2 -i Fib +i ;
   //: Fib DUP 3 <i ? 1 ! DUP 1 -i Fib NIP 2 -i Fib +i ;
   0x01, 0x00, 0x00, 0x00,          //hashed Fib
-  0x3E, 0x00,                      //Length
+  0x36, 0x00,                      //Length
   0x11,                            //arity:returns
-  Op_Mark, 0x00, 0x00, 0x00, 0x01, //=n
-  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n 
+  Op_Mark, 0x00, 0x01,             //=n
+  Op_Dupe, 0x00, 0x01,             //n 
   Op_I32,  0x03, 0x00, 0x00, 0x00, //[i32 3]
   Op_ILthn,                        //[<i]
   Op_When, 0x08, 0x00,             //[? skip 8]
   Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
   Op_Else, 0x21, 0x00,             //[! skip 33]
-  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n
+  Op_Dupe, 0x00, 0x01,             //n
   Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
   Op_ISub,                         //[-i]
   Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
-  Op_Dupe, 0x00, 0x00, 0x00, 0x01, //n
+  Op_Dupe, 0x00, 0x01,             //n
   Op_I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
   Op_ISub,                         //[-i]
   Op_Call, 0x01, 0x00, 0x00, 0x00, //[call Fib]
@@ -139,20 +140,20 @@ void exeFunc (hash32 fHash, sptr s) {
         return;
       case Op_Mark: //Copy mark hash onto the stack
         ++s;
-        memcpy(stack + s, code + c, sizeof(hash32));
-        stack[s += 4] = V_Mark;
-        c += sizeof(hash32);
+        memcpy(stack + s, code + c, sizeof(hash16));
+        stack[s += sizeof(hash16)] = V_Mark;
+        c += sizeof(hash16);
         break;
       case Op_Dupe: { //Find marked data on the stack and duplicate it here
-        hash32 mark = i32_(code + c);
+        hash16 mark = u16_(code + c);
         for (sptr ss = s; ss;) {
           if (stack[ss] != V_Mark) {
             skipBack(ss);
             continue;
           }
-          hash32 hash = i32_(stack + ss - sizeof(hash32));
+          hash16 hash = u16_(stack + ss - sizeof(hash16));
           if (mark == hash) {
-            ss -= sizeof(hash32) + 1; //Go before the mark
+            ss -= sizeof(hash16) + 1; //Go before the mark
             vlen len = vLen(ss);
             ss -= len; //Go before the data
             ++s;
@@ -161,7 +162,7 @@ void exeFunc (hash32 fHash, sptr s) {
             break;
           }
         }
-        c += sizeof(hash32);
+        c += sizeof(hash16);
         break;
       }
       case Op_U08:
