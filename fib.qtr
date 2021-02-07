@@ -1,0 +1,5 @@
+
+:1:1 Fib =n
+  n 3 <i ? 1
+    ! n 1 -i Fib n 2 -i Fib +i ;
+"\"23 Fib\" is " 23 Fib PRT

@@ -1,11 +1,14 @@
 
+//#pragma GCC optimize ("O3")
+//#pragma GCC push_options
+
 #define MAX_CODE_LEN  2000
 #define MAX_STACK_LEN 2000
 
 enum Op : uint8_t {
-  Op_Return, Op_Mark,   Op_Dupe,   Op_U08,    Op_I32,    Op_F32,
-  Op_IAdd,   Op_ISub,   Op_ILthn,  Op_IMthn,  Op_When,   Op_Else,
-  Op_Call,   Op_Str,    Op_Print
+  Op_Return, Op_Mark,   Op_Var,    Op_U08,    Op_I32,    Op_F32,
+  Op_Blob,   Op_IAdd,   Op_ISub,   Op_ILthn,  Op_IMthn,  Op_When,
+  Op_Else,   Op_Call,   Op_Str,    Op_Print
 };
 enum Val : uint8_t {
   V_Mark = 0x02, V_U08 = 0x01,  V_I32 = 0x14,  V_F32  = 0x24,
@@ -20,36 +23,34 @@ typedef uint16_t flen;
 typedef uint16_t vlen;
 
 uint8_t code[MAX_CODE_LEN] = {
-  //Entry
-  0x00, 0x00,                      //entry
-  0x09, 0x00,                      //Length
-  0x00,                            //arity:returns
-  Op_I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
-  Op_Call, 0x01, 0x00,             //[call Fib]
-  Op_Print,                        //[Print]
   //:1:1 Fib =n n 3 <i ? 1 ! n 1 -i Fib n 2 -i Fib +i ;
-  //: Fib DUP 3 <i ? 1 ! DUP 1 -i Fib NIP 2 -i Fib +i ;
   0x01, 0x00,                      //hashed Fib
   0x31, 0x00,                      //Length
   0x11,                            //arity:returns
   Op_Mark, 0x00, 0x01,             //=n
-  Op_Dupe, 0x00, 0x01,             //n 
+  Op_Var,  0x00, 0x01,             //n
   Op_I32,  0x03, 0x00, 0x00, 0x00, //[i32 3]
   Op_ILthn,                        //[<i]
   Op_When, 0x08, 0x00,             //[? skip 8]
   Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
-  Op_Else, 0x21, 0x00,             //[! skip 33]
-  Op_Dupe, 0x00, 0x01,             //n
+  Op_Else, 0x19, 0x00,             //[! skip 19]
+  Op_Var,  0x00, 0x01,             //n
   Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
   Op_ISub,                         //[-i]
   Op_Call, 0x01, 0x00,             //[call Fib]
-  Op_Dupe, 0x00, 0x01,             //n
+  Op_Var,  0x00, 0x01,             //n
   Op_I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
   Op_ISub,                         //[-i]
   Op_Call, 0x01, 0x00,             //[call Fib]
   Op_IAdd,                         //[+i]
-  Op_Return                        //[return]
+  Op_Return,                       //[return]
+  //Entry
+  Op_I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
+  Op_Call, 0x01, 0x00,             //[call Fib]
+  Op_Print,                        //[Print]
+  0x09, 0x00                       //Length
 };
+cptr codeLen = 65;
 uint8_t stack[MAX_STACK_LEN];
 
 uint16_t u16_ (uint8_t* b) {
@@ -67,7 +68,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Hello.");
   auto timeStart = millis();
-  exeFunc(0, 0); //Call entry
+  exeEntry();
   auto timeFinish = millis();
   Serial.print(timeFinish - timeStart);
   Serial.println("ms");
@@ -76,7 +77,7 @@ void loop() {}
 
 hash16 prevHash = 0;
 cptr prevCptr = sizeof(hash16) + sizeof(flen) + 1;
-cptr findFuncCode (hash16 hash) {
+cptr findFunc (hash16 hash) {
   if (hash == prevHash)
     return prevCptr;
   cptr c = 0;
@@ -120,11 +121,13 @@ void pushI32 (cptr &s, int32_t v) {
   ++s;
 }
 
-void exeFunc (hash16 fHash, sptr s) {
-  cptr c = findFuncCode(fHash);
+void exeEntry () {
+  cptr entryLen = u16_(code + codeLen - sizeof(uint16_t));
+  exeFunc(codeLen - entryLen - sizeof(uint16_t), 0, 0, 0);
+}
+
+void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
   sptr callS = s;
-  uint8_t arity =  (code[c - 1] & 0xF0) >> 4;
-  uint8_t nReturn = code[c - 1] & 0x0F;
 
   while (true) {
     switch (code[c++]) {
@@ -145,7 +148,7 @@ void exeFunc (hash16 fHash, sptr s) {
         ++s;
         c += sizeof(hash16);
         break;
-      case Op_Dupe: { //Find marked data on the stack and duplicate it here
+      case Op_Var: { //Find marked data on the stack and duplicate it here
         hash16 mark = u16_(code + c);
         sptr ss = s;
         while (ss) {
@@ -192,10 +195,11 @@ void exeFunc (hash16 fHash, sptr s) {
       case Op_Else: //Unconditionally skip
         c += u16_(code + c) + sizeof(flen);
         break;
-      case Op_Call:
-        exeFunc(u16_(code + c), s);
-        c += sizeof(hash16);
-        break;
+      case Op_Call: {
+          cptr fc = findFunc(u16_(code + c));
+          c += sizeof(hash16);
+          exeFunc(fc, s, (code[fc - 1] & 0xF0) >> 4, code[fc - 1] & 0x0F);
+        } break;
       case Op_Str:
         break;
       case Op_Print:
