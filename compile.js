@@ -1,5 +1,7 @@
 #!/usr/bin/node
-const ops = "RETURN MARK VAR U08 I32 F32 BLOB +i -i <i >i ? ! CALL STR PRT"
+const ops = (
+  "RETURN MARK VAR U08 I32 F32 BLOB + - < > +i -i <i >i ? ! " +
+  "CALL STR PRT DIGW DIGR SLEEP")
   .split(" ")
   .reduce((acc, o, i) => ({ [o]: i, ...acc }), {});
 const hash32 = str =>

@@ -1,18 +1,19 @@
 
-//#pragma GCC optimize ("O3")
-//#pragma GCC push_options
+#pragma GCC optimize ("O3")
+#pragma GCC push_options
 
 #define MAX_CODE_LEN  2000
 #define MAX_STACK_LEN 2000
 
 enum Op : uint8_t {
-  Op_Return, Op_Mark,   Op_Var,    Op_U08,    Op_I32,    Op_F32,
-  Op_Blob,   Op_IAdd,   Op_ISub,   Op_ILthn,  Op_IMthn,  Op_When,
-  Op_Else,   Op_Call,   Op_Str,    Op_Print
+  Op_Return, Op_Mark,   Op_Var,    Op_U08,    Op_I32,    Op_F32,    Op_Blob,
+  Op_Add,    Op_Sub,    Op_Lthn,   Op_Mthn,   Op_IAdd,   Op_ISub,   Op_ILthn,
+  Op_IMthn,  Op_When,   Op_Else,   Op_Call,   Op_Str,    Op_Print,  Op_DigW,
+  Op_DigR,   Op_Sleep,
 };
 enum Val : uint8_t {
   V_Mark = 0x02, V_U08 = 0x01,  V_I32 = 0x14,  V_F32  = 0x24,
-  V_Blob = 0x00
+  V_Blob = 0x00,
 };
 
 typedef uint32_t hash32;
@@ -65,6 +66,7 @@ int32_t i32_ (uint8_t* b) {
 }
 
 void setup() {
+  while (!Serial);
   Serial.begin(115200);
   Serial.println("Hello.");
   auto timeStart = millis();
@@ -81,7 +83,7 @@ cptr findFunc (hash16 hash) {
   if (hash == prevHash)
     return prevCptr;
   cptr c = 0;
-  while (c < MAX_CODE_LEN && u16_(code + c) != hash) {
+  while (c < codeLen && u16_(code + c) != hash) {
     c += sizeof(hash16);
     c += sizeof(flen) + 1 + u16_(code + c);
   }
@@ -93,24 +95,17 @@ cptr findFunc (hash16 hash) {
 
 vlen vLen (sptr s) {
   vlen len = stack[s] & 0x0F;
-  return len ? len : u16_(stack + s - sizeof(vlen)); //TODO ||
+  return len ? len : u16_(stack + s - sizeof(vlen)) + sizeof(vlen);
 }
-void skipBack (sptr &s) {
-  if (vlen len = vLen(s - 1))
-    s -= len + 1;
-  else
-    s -= u16_(stack + s - sizeof(vlen)) + sizeof(vlen);
-}
+#define skipBack(s) \
+  s -= vLen(s - 1) + 1
 int32_t popI32 (cptr &s) {
-  int32_t i32 = i32_((stack + s) - sizeof(int32_t) - 1);
   s -= sizeof(int32_t) + 1;
+  int32_t i32 = i32_(stack + s);
   return i32;
 }
-uint8_t popU08 (cptr &s) {
-  uint8_t u08 = *((stack + s) - sizeof(uint8_t) - 1);
-  s -= sizeof(uint8_t) + 1;
-  return u08;
-}
+#define popU08(s) \
+  stack[s -= sizeof(uint8_t) + 1]
 void pushU08 (cptr &s, uint8_t v) {
   stack[s++] = v;
   stack[s++] = V_U08;
@@ -124,6 +119,7 @@ void pushI32 (cptr &s, int32_t v) {
 void exeEntry () {
   cptr entryLen = u16_(code + codeLen - sizeof(uint16_t));
   exeFunc(codeLen - entryLen - sizeof(uint16_t), 0, 0, 0);
+  codeLen -= entryLen;
 }
 
 void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
@@ -177,6 +173,9 @@ void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
         break;
       case Op_F32:
         break;
+      case Op_Add:
+        pushU08(s, popU08(s) + popU08(s));
+        break;
       case Op_IAdd:
         pushI32(s, popI32(s) + popI32(s));
         break;
@@ -184,11 +183,14 @@ void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
         int32_t b = popI32(s);
         pushI32(s, popI32(s) - b);
       } break;
-      case Op_ILthn: //pop ints a, b, compare a < b
-        pushU08(s, popI32(s) > popI32(s));
-        break;
-      case Op_IMthn:
-        break;
+      case Op_ILthn: {
+        int32_t b = popI32(s);
+        pushU08(s, popI32(s) < b);
+      } break;
+      case Op_IMthn: {
+        int32_t b = popI32(s);
+        pushU08(s, popI32(s) > b);
+      } break;
       case Op_When: //pop bool, skip if false
         c += (popU08(s) ? 0 : u16_(code + c)) + sizeof(flen);
         break;
@@ -203,7 +205,16 @@ void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
       case Op_Str:
         break;
       case Op_Print:
-    Serial.println(popI32(s));
+        Serial.println(popI32(s)); //TODO print string not i32
+        break;
+      case Op_DigW:
+        digitalWrite(popU08(s), popU08(s));
+        break;
+      case Op_DigR:
+        pushU08(s, digitalRead(popU08(s)));
+        break;
+      case Op_Sleep:
+        delay(popI32(s));
         break;
     }
   }
