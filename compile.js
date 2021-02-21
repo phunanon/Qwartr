@@ -1,6 +1,6 @@
 #!/usr/bin/node
 const ops = (
-  "RETURN MARK VAR U08 I32 F32 BLOB + - < > +i -i <i >i ? ! " +
+  "RETURN MARK VAR U08 I32 BLOB + - < > +i -i <i >i ? ! " +
   "CALL STR PRT DIGW DIGR SLEEP")
   .split(" ")
   .reduce((acc, o, i) => ({ [o]: i, ...acc }), {});
@@ -43,29 +43,37 @@ for (let w = 0; w < clean.length; ++w) {
       (arity << 4) | nReturn,
       `\t//Func ${clean[w]}`
     );
-  } else if (";?!".includes(clean[w])) {
+  } else if (clean[w] == ";") {
     compiled.push(clean[w]);
-    if (clean[w] != ";") compiled.push(0, 0, `\t//${clean[w]}`);
+  } else if ("?!".includes(clean[w])) {
+    compiled.push(clean[w], 0, 0, `\t\t//${clean[w]}`);
   } else if (/^[A-Z<>+-]/.test(clean[w])) {
     const op = ops[clean[w]];
-    if (op) compiled.push(op, `\t\t\t//${clean[w]}`);
+    if (op)
+      compiled.push(op, `\t\t\t\t//${clean[w]}`);
     else
       compiled.push(
         ops.CALL,
         ...hash16bin(clean[w]),
-        `\t//Call ${clean[w]}`
+        `\t\t//Call ${clean[w]}`
       );
   } else if (clean[w].startsWith("=")) {
     compiled.push(
       ops.MARK,
       ...hash16bin(clean[w].slice(1)),
-      `\t//Mark ${clean[w]}`
+      `\t\t//Mark ${clean[w]}`
+    );
+  } else if (/^0x\d\d$/.test(clean[w])) {
+    compiled.push(
+      ops.U08,
+      parseInt(clean[w], 16),
+      `\t\t//Push U08 ${clean[w]}`
     );
   } else if (/^\d+$/.test(clean[w])) {
     compiled.push(
       ops.I32,
       ...i32bin(parseInt(clean[w])),
-      `\t//Push ${clean[w]}`
+      `\t//Push I32 ${clean[w]}`
     );
   } else if (clean[w] == '"') {
     const str = strings.pop().replace(/\\"/g, '"');
@@ -76,40 +84,41 @@ for (let w = 0; w < clean.length; ++w) {
       `\t//Push \`${str}\``
     );
   } else {
-    compiled.push(ops.VAR, ...hash16bin(clean[w]), `\t//Var ${clean[w]}`);
+    compiled.push(ops.VAR, ...hash16bin(clean[w]), `\t\t//Var ${clean[w]}`);
   }
   compiled.push("\n");
 }
 const smartFind = (what, i, doCount = true) => {
-  const filtered = compiled.filter(c => !invisiComp.test(c));
-  for (let l = 0, count = 0; i < filtered.length; ++i, ++l) {
-    if (what.includes(filtered[i]) && !count--)
-      return l + (filtered[i] == "!" ? 3 : (what[0] == ";" ? 1 : 0));
-    if (doCount && filtered[i] == "?") ++count;
+  for (let l = 0, count = 0; i < compiled.length; ++i) {
+    if (invisiComp.test(compiled[i])) continue;
+    if (what.includes(compiled[i]) && !count--)
+      return l + (compiled[i] == "!" ? 3 : (what[0] == ";" ? 1 : 0));
+    if (doCount && compiled[i] == "?") ++count;
+    ++l;
   }
 };
 {
   let i = 0, lastFuncI = 0;
   for (; i < compiled.length; ++i) {
-    if (["?", "!"].includes(compiled[i])) {
-      const len = smartFind(["!", ".", ";"], i + 3);
+    if ("?!".includes(compiled[i])) {
+      const len = smartFind("!.;", i + 3);
       compiled[i] = ops[compiled[i]];
       [compiled[i + 1], compiled[i + 2]] = num16bin(len);
     } else if (compiled[i] == "len") {
-      const len = smartFind([";"], i + 3, false);
+      const len = smartFind(";", i + 3, false);
       [compiled[i], compiled[i + 1]] = num16bin(len);
     } else if (compiled[i] == ";") {
       compiled[i] = ops.RETURN;
-      lastFuncI = i;
+      lastFuncI = i + 1;
     }
   }
   compiled.push(...num16bin(compiled
     .slice(lastFuncI)
     .filter(c => !invisiComp.test(c))
-    .length), "\t\t//Entry length");
+    .length), "\t\t\t//Entry length");
 }
 
 console.log(`//${compiled.filter(x => Number.isInteger(x)).length}B`);
 console.log(
-  compiled.map(x => (Number.isInteger(x) ? `0x${toHex(x)}, ` : x)).join("")
+  compiled.map(x => Number.isInteger(x) ? `0x${toHex(x)}, ` : x).join("")
 );

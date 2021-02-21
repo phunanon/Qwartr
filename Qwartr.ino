@@ -6,7 +6,7 @@
 #define MAX_STACK_LEN 2000
 
 enum Op : uint8_t {
-  Op_Return, Op_Mark,   Op_Var,    Op_U08,    Op_I32,    Op_F32,    Op_Blob,
+  Op_Return, Op_Mark,   Op_Var,    Op_U08,    Op_I32,    Op_Blob,
   Op_Add,    Op_Sub,    Op_Lthn,   Op_Mthn,   Op_IAdd,   Op_ISub,   Op_ILthn,
   Op_IMthn,  Op_When,   Op_Else,   Op_Call,   Op_Str,    Op_Print,  Op_DigW,
   Op_DigR,   Op_Sleep,
@@ -25,31 +25,28 @@ typedef uint16_t vlen;
 
 uint8_t code[MAX_CODE_LEN] = {
   //:1:1 Fib =n n 3 <i ? 1 ! n 1 -i Fib n 2 -i Fib +i ;
-  0x01, 0x00,                      //hashed Fib
-  0x31, 0x00,                      //Length
-  0x11,                            //arity:returns
-  Op_Mark, 0x00, 0x01,             //=n
-  Op_Var,  0x00, 0x01,             //n
-  Op_I32,  0x03, 0x00, 0x00, 0x00, //[i32 3]
-  Op_ILthn,                        //[<i]
-  Op_When, 0x08, 0x00,             //[? skip 8]
-  Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
-  Op_Else, 0x19, 0x00,             //[! skip 19]
-  Op_Var,  0x00, 0x01,             //n
-  Op_I32,  0x01, 0x00, 0x00, 0x00, //[i32 1]
-  Op_ISub,                         //[-i]
-  Op_Call, 0x01, 0x00,             //[call Fib]
-  Op_Var,  0x00, 0x01,             //n
-  Op_I32,  0x02, 0x00, 0x00, 0x00, //[i32 2]
-  Op_ISub,                         //[-i]
-  Op_Call, 0x01, 0x00,             //[call Fib]
-  Op_IAdd,                         //[+i]
-  Op_Return,                       //[return]
-  //Entry
-  Op_I32,  0x17, 0x00, 0x00, 0x00, //[i32 23]
-  Op_Call, 0x01, 0x00,             //[call Fib]
-  Op_Print,                        //[Print]
-  0x09, 0x00                       //Length
+  0x96, 0xEA, 0x31, 0x00, 0x11,   //Func Fib
+  0x01, 0x13, 0xB6,               //Mark =n
+  0x02, 0x13, 0xB6,               //Var n
+  0x04, 0x03, 0x00, 0x00, 0x00,   //Push I32 3
+  0x0C,                           //<i
+  0x0E, 0x08, 0x00,               //?
+  0x04, 0x01, 0x00, 0x00, 0x00,   //Push I32 1
+  0x0F, 0x19, 0x00,               //!
+  0x02, 0x13, 0xB6,               //Var n
+  0x04, 0x01, 0x00, 0x00, 0x00,   //Push I32 1
+  0x0B,                           //-i
+  0x10, 0x96, 0xEA,               //Call Fib
+  0x02, 0x13, 0xB6,               //Var n
+  0x04, 0x02, 0x00, 0x00, 0x00,   //Push I32 2
+  0x0B,                           //-i
+  0x10, 0x96, 0xEA,               //Call Fib
+  0x0A,                           //+i
+  0x00, 
+  0x04, 0x17, 0x00, 0x00, 0x00,   //Push I32 23
+  0x10, 0x96, 0xEA,               //Call Fib
+  0x12,                           //PRT
+  0x09, 0x00,                     //Entry length
 };
 cptr codeLen = 65;
 uint8_t stack[MAX_STACK_LEN];
@@ -119,7 +116,7 @@ void pushI32 (cptr &s, int32_t v) {
 void exeEntry () {
   cptr entryLen = u16_(code + codeLen - sizeof(uint16_t));
   exeFunc(codeLen - entryLen - sizeof(uint16_t), 0, 0, 0);
-  codeLen -= entryLen;
+  codeLen -= entryLen + sizeof(uint16_t);
 }
 
 void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
@@ -170,8 +167,6 @@ void exeFunc (cptr c, sptr s, vlen arity, vlen nReturn) {
         stack[s += sizeof(int32_t)] = V_I32;
         ++s;
         c += sizeof(int32_t);
-        break;
-      case Op_F32:
         break;
       case Op_Add:
         pushU08(s, popU08(s) + popU08(s));
